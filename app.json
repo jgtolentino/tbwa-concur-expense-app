@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Concur Expense UI Integration",
-    "slug": "concur-expense-ui-integration",
+    "name": "TBWA Expense Management",
+    "slug": "tbwa-expense-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "tbwaexpense",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,14 +15,19 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.rork.concur-expense-ui-integration"
+      "bundleIdentifier": "com.tbwa.expense",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app needs access to camera to capture receipts.",
+        "NSPhotoLibraryUsageDescription": "This app needs access to photo library to select receipts."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.concur-expense-ui-integration"
+      "package": "com.tbwa.expense",
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -31,9 +36,12 @@
       [
         "expo-router",
         {
-          "origin": "https://rork.com/"
+          "origin": "https://expense.tbwa.com/"
         }
-      ]
+      ],
+      "expo-camera",
+      "expo-image-picker",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

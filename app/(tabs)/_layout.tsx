@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Home, PieChart, Settings } from "lucide-react-native";
+import { Home, Receipt, Clock, Ticket, Settings } from "lucide-react-native";
 import React from "react";
 
 import { colors } from "@/constants/colors";
@@ -34,7 +34,21 @@ export default function TabLayout() {
         name="expenses"
         options={{
           title: "Expenses",
-          tabBarIcon: ({ color }) => <PieChart color={color} size={24} />,
+          tabBarIcon: ({ color }) => <Receipt color={color} size={24} />,
+        }}
+      />
+      <Tabs.Screen
+        name="time"
+        options={{
+          title: "Time",
+          tabBarIcon: ({ color }) => <Clock color={color} size={24} />,
+        }}
+      />
+      <Tabs.Screen
+        name="tickets"
+        options={{
+          title: "Support",
+          tabBarIcon: ({ color }) => <Ticket color={color} size={24} />,
         }}
       />
       <Tabs.Screen
