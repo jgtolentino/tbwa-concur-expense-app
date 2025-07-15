@@ -1,6 +1,6 @@
-# TBWA Expense Management App
+# TBWA Employee Management App
 
-💰 Smart expense tracking and reimbursement system for TBWA employees.
+🏢 Complete HR solution with expense tracking, timekeeping, and support ticketing for TBWA employees.
 
 ## 🎯 Core Features
 
@@ -27,6 +27,20 @@
 - Payment status tracking
 - Historical payment records
 - Tax documentation
+
+### ⏰ Timekeeping
+- Clock in/out with selfie verification
+- GPS location tracking
+- Real-time work hours tracking
+- Monthly time reports
+- Schedule management
+
+### 🎫 Support Tickets
+- Submit IT/HR support requests
+- Track ticket status and updates
+- Priority-based ticket routing
+- File attachments support
+- ServiceNow-like interface
 
 ## 🚀 Quick Start
 

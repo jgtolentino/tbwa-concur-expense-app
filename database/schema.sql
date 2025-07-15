@@ -172,3 +172,197 @@ ON CONFLICT (code) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('receipts', 'receipts', true)
 ON CONFLICT (id) DO NOTHING;
+
+-- TIMEKEEPING TABLES
+
+-- Time entries (clock in/out)
+CREATE TABLE IF NOT EXISTS public.time_entries (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  clock_in TIMESTAMPTZ NOT NULL,
+  clock_out TIMESTAMPTZ,
+  clock_in_location JSONB,
+  clock_out_location JSONB,
+  clock_in_selfie_url TEXT,
+  clock_out_selfie_url TEXT,
+  total_hours DECIMAL(5,2) GENERATED ALWAYS AS (
+    CASE 
+      WHEN clock_out IS NOT NULL 
+      THEN EXTRACT(EPOCH FROM (clock_out - clock_in)) / 3600.0
+      ELSE NULL
+    END
+  ) STORED,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  INDEX idx_time_entries_user_id (user_id),
+  INDEX idx_time_entries_clock_in (clock_in DESC)
+);
+
+-- Time adjustments
+CREATE TABLE IF NOT EXISTS public.time_adjustments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  time_entry_id UUID REFERENCES public.time_entries(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  adjustment_hours DECIMAL(5,2) NOT NULL,
+  reason TEXT NOT NULL,
+  approved_by UUID REFERENCES public.profiles(id),
+  approved_at TIMESTAMPTZ,
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Work schedules
+CREATE TABLE IF NOT EXISTS public.work_schedules (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  day_of_week INTEGER CHECK (day_of_week BETWEEN 0 AND 6),
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  CONSTRAINT unique_user_schedule UNIQUE (user_id, day_of_week)
+);
+
+-- TICKETING SYSTEM TABLES
+
+-- Ticket categories
+CREATE TABLE IF NOT EXISTS public.ticket_categories (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name VARCHAR(100) NOT NULL,
+  code VARCHAR(50) UNIQUE NOT NULL,
+  icon VARCHAR(10),
+  description TEXT,
+  default_assignee_group VARCHAR(100),
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Support tickets
+CREATE TABLE IF NOT EXISTS public.tickets (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  ticket_number VARCHAR(20) UNIQUE NOT NULL,
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  description TEXT NOT NULL,
+  category VARCHAR(50) NOT NULL,
+  priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
+  status VARCHAR(20) DEFAULT 'new' CHECK (status IN ('new', 'assigned', 'in-progress', 'pending', 'resolved', 'closed', 'cancelled')),
+  
+  -- Assignment
+  assigned_to UUID REFERENCES public.profiles(id),
+  assigned_at TIMESTAMPTZ,
+  assigned_group VARCHAR(100),
+  
+  -- Resolution
+  resolved_by UUID REFERENCES public.profiles(id),
+  resolved_at TIMESTAMPTZ,
+  resolution_notes TEXT,
+  
+  -- Metadata
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  closed_at TIMESTAMPTZ,
+  
+  INDEX idx_tickets_user_id (user_id),
+  INDEX idx_tickets_status (status),
+  INDEX idx_tickets_priority (priority),
+  INDEX idx_tickets_number (ticket_number)
+);
+
+-- Ticket comments
+CREATE TABLE IF NOT EXISTS public.ticket_comments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  ticket_id UUID REFERENCES public.tickets(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  comment TEXT NOT NULL,
+  is_internal BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Ticket attachments
+CREATE TABLE IF NOT EXISTS public.ticket_attachments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  ticket_id UUID REFERENCES public.tickets(id) ON DELETE CASCADE,
+  uploaded_by UUID REFERENCES auth.users(id) NOT NULL,
+  file_url TEXT NOT NULL,
+  file_name VARCHAR(255),
+  file_size INTEGER,
+  file_type VARCHAR(50),
+  uploaded_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- RLS Policies for timekeeping
+ALTER TABLE public.time_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.time_adjustments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own time entries" ON public.time_entries
+  FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY "Users can create own time entries" ON public.time_entries
+  FOR INSERT WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "Users can update own active time entries" ON public.time_entries
+  FOR UPDATE USING (user_id = auth.uid() AND clock_out IS NULL);
+
+-- RLS Policies for tickets
+ALTER TABLE public.tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ticket_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ticket_attachments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own tickets" ON public.tickets
+  FOR SELECT USING (user_id = auth.uid() OR assigned_to = auth.uid());
+
+CREATE POLICY "Users can create tickets" ON public.tickets
+  FOR INSERT WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "Users can update own tickets" ON public.tickets
+  FOR UPDATE USING (user_id = auth.uid());
+
+CREATE POLICY "Users can view comments on their tickets" ON public.ticket_comments
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.tickets
+      WHERE tickets.id = ticket_comments.ticket_id
+      AND (tickets.user_id = auth.uid() OR tickets.assigned_to = auth.uid())
+    )
+  );
+
+-- Seed ticket categories
+INSERT INTO public.ticket_categories (name, code, icon, default_assignee_group) VALUES
+  ('IT Support', 'it', '💻', 'IT'),
+  ('HR', 'hr', '👥', 'HR'),
+  ('Expense', 'expense', '💰', 'Finance'),
+  ('Facilities', 'facilities', '🏢', 'Facilities'),
+  ('Other', 'other', '📋', 'General')
+ON CONFLICT (code) DO NOTHING;
+
+-- Create sequence for ticket numbers
+CREATE SEQUENCE IF NOT EXISTS ticket_number_seq START 1000;
+
+-- Function to generate ticket numbers
+CREATE OR REPLACE FUNCTION generate_ticket_number()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.ticket_number := 'INC' || LPAD(nextval('ticket_number_seq')::text, 7, '0');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to auto-generate ticket numbers
+CREATE TRIGGER set_ticket_number
+  BEFORE INSERT ON public.tickets
+  FOR EACH ROW
+  WHEN (NEW.ticket_number IS NULL)
+  EXECUTE FUNCTION generate_ticket_number();
+
+-- Create storage buckets
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('selfies', 'selfies', false)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('ticket-attachments', 'ticket-attachments', false)
+ON CONFLICT (id) DO NOTHING;
