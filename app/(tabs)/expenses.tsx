@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useExpenseStore } from "@/store/expenseStore";
+import { trpc } from "@/lib/trpc";
 import ExpenseCard from "@/components/ExpenseCard";
 import EmptyState from "@/components/EmptyState";
 import { colors } from "@/constants/colors";
@@ -18,6 +19,12 @@ export default function ExpensesScreen() {
   const router = useRouter();
   const { expenses } = useExpenseStore();
   const [searchQuery, setSearchQuery] = useState("");
+  
+  // Example of using tRPC
+  const { data: backendExpenses, isLoading } = trpc.expenses.list.useQuery({
+    limit: 10,
+    offset: 0,
+  });
   
   const filteredExpenses = expenses.filter((expense) =>
     expense.description.toLowerCase().includes(searchQuery.toLowerCase())
@@ -35,6 +42,16 @@ export default function ExpensesScreen() {
           placeholderTextColor={colors.gray[500]}
         />
       </View>
+      
+      {/* Show backend data if available */}
+      {backendExpenses && (
+        <View style={styles.backendSection}>
+          <Text style={styles.backendTitle}>Backend Expenses:</Text>
+          <Text style={styles.backendText}>
+            Found {backendExpenses.total} expenses from backend
+          </Text>
+        </View>
+      )}
       
       {filteredExpenses.length > 0 ? (
         <FlatList
@@ -89,6 +106,24 @@ const styles = StyleSheet.create({
     height: 44,
     fontSize: 16,
     color: colors.text,
+  },
+  backendSection: {
+    backgroundColor: colors.card,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  backendTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.primary,
+    marginBottom: 4,
+  },
+  backendText: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   listContent: {
     paddingBottom: 80,
